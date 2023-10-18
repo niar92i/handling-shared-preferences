@@ -1,5 +1,9 @@
 import 'dart:math';
-
+import 'dart:convert';
+import 'package:recipes/network/recipe_model.dart';
+import 'package:flutter/services.dart';
+import 'package:recipes/ui/recipe_card.dart';
+import 'recipe_details.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:recipes/ui/widgets/custom_dropdown.dart';
@@ -25,12 +29,12 @@ class _RecipeListState extends State<RecipeList> {
   bool loading = false;
   bool inErrorState = false;
   List<String> previousSearches = <String>[];
-  // TODO: Add _currentRecipes1
+  APIRecipeQuery? _currentRecipes1;
 
   @override
   void initState() {
     super.initState();
-    // TODO: Call loadRecipes()
+    loadRecipes();
 
     getPreviousSearches();
 
@@ -56,7 +60,12 @@ class _RecipeListState extends State<RecipeList> {
       });
   }
 
-  // TODO: Add loadRecipes
+  Future loadRecipes() async {
+    final jsonString = await rootBundle.loadString('assets/recipes1.json');
+    setState(() {
+      _currentRecipes1 = APIRecipeQuery.fromJson(jsonDecode(jsonString));
+    });
+  }
 
   @override
   void dispose() {
@@ -106,39 +115,67 @@ class _RecipeListState extends State<RecipeList> {
         padding: const EdgeInsets.all(4.0),
         child: Row(
           children: [
-            // Replace
-            const Icon(Icons.search),
+            IconButton(
+                onPressed: () {
+                  startSearch(searchTextController.text);
+                  final currentFocus = FocusScope.of(context);
+                  if (!currentFocus.hasPrimaryFocus) {
+                    currentFocus.unfocus();
+                  }
+                },
+                icon: const Icon(Icons.search),
+            ),
             const SizedBox(
               width: 6.0,
             ),
-            // *** Start Replace
             Expanded(
-              child: Row(
-                children: <Widget>[
-                  Expanded(
-                    child: TextField(
-                      decoration: const InputDecoration(
-                          border: InputBorder.none, hintText: 'Search'),
-                      autofocus: false,
-                      controller: searchTextController,
-                      onChanged: (query) => {
-                        if (query.length >= 3) {
-                            // Rebuild list
-                            setState(() {
-                                currentSearchList.clear();
-                                currentCount = 0;
-                                currentEndPosition = pageCount;
-                                currentStartPosition = 0;
-                              },
-                            )
-                          }
-                      },
+                child: Row (
+                  children: <Widget>[
+                    Expanded(
+                        child: TextField(
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            hintText: 'Search',
+                          ),
+                          autofocus: false,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (value) {
+                            startSearch(searchTextController.text);
+                          },
+                          controller: searchTextController,
+                        )
                     ),
-                  ),
-                ],
-              ),
+                    PopupMenuButton<String>(
+                      icon: const Icon(
+                        Icons.arrow_drop_down,
+                        color: lightGrey,
+                      ),
+                      onSelected: (String value) {
+                        searchTextController.text = value;
+                        startSearch(searchTextController.text);
+                      },
+                        itemBuilder: (BuildContext context) {
+                        return previousSearches
+                            .map<CustomDropdownMenuItem<String>>(
+                                (String value) {
+                                  return CustomDropdownMenuItem<String>(
+                                      value: value,
+                                      text: value,
+                                    callback: (){
+                                        setState(() {
+                                          previousSearches.remove(value);
+                                          savePreviousSearches();
+                                          Navigator.pop(context);
+                                        });
+                                    },
+                                  );
+                                }
+                            ).toList();
+                        }
+                    ),
+                  ],
+                )
             ),
-            // *** End Replace
           ],
         ),
       ),
@@ -160,16 +197,38 @@ class _RecipeListState extends State<RecipeList> {
     });
   }
 
-  // TODO: Replace method
   Widget _buildRecipeLoader(BuildContext context) {
-    if (searchTextController.text.length < 3) {
+    if (_currentRecipes1 == null || _currentRecipes1?.hits == null) {
       return Container();
     }
     // Show a loading indicator while waiting for the movies
-    return const Center(
-      child: CircularProgressIndicator(),
+    return Flexible(
+        child: ListView.builder(
+          itemCount: 1,
+            itemBuilder: (BuildContext context, int index) {
+              return Center(
+                child: _buildRecipeCard(context, _currentRecipes1!.hits, 0),
+              );
+            },
+        )
     );
   }
 
-  // TODO: Add _buildRecipeCard
+  Widget _buildRecipeCard(
+      BuildContext topLevelContext,
+      List<APIHits> hits,
+      int index) {
+    final recipe = hits[index].recipe;
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(topLevelContext, MaterialPageRoute(
+            builder: (context) {
+              return const RecipeDetails();
+            },
+        ));
+      },
+      child: recipeStringCard(recipe.image, recipe.label),
+    );
+  }
+
 }
